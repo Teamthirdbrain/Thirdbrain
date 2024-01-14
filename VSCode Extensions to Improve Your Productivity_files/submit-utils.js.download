@@ -1,0 +1,123 @@
+/**
+ * Extracts utm params from URL.
+ * @returns {Object} params - Extracted Params.
+ */
+function getUriParams() {
+  var fields = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+  var params = {};
+
+  fields.map(function (field) {
+    field = field.replace(/[\\[\\]]/g, '\\$&');
+
+    var regex = new RegExp('[?&]' + field + '(=([^&#]*)|&|#|$)');
+    var results = regex.exec(window.location.href);
+
+    if (results) {
+      var result = results[2] || '';
+      var value = decodeURIComponent(result.replace(/\\+/g, ' '));
+      params[field] = value;
+    }
+  });
+
+  return params;
+}
+
+function resetButtonStatus(submitButton) {
+  submitButton.find('svg').remove();
+  submitButton.text('Subscribe');
+  submitButton.removeClass('clicked');
+  submitButton.removeClass('done');
+}
+
+function showButtonStatus(submitButton) {
+  var checkmarkTemplate = $('svg.submit-checkmark');
+  submitButton.find('svg').remove();
+  submitButton.append(checkmarkTemplate.clone());
+  submitButton.find('svg').removeClass('d-none');
+  submitButton.addClass('done');
+}
+
+/**
+ * Creates a script tag and calls the URI using JSONP.
+ * @returns {Promise} params - URI response.
+ */
+function jsonp(uri) {
+  return new Promise(function (res, rej) {
+    var id = '_' + Math.round(10000 * Math.random());
+    var callbackName = 'jsonp_callback_' + id;
+    window[callbackName] = function (data) {
+      delete window[callbackName];
+      var ele = document.getElementById(id);
+      ele.parentNode.removeChild(ele);
+      res(data);
+    };
+
+    var src = uri + '&c=' + callbackName;
+    var script = document.createElement('script');
+    script.src = src;
+    script.id = id;
+    script.addEventListener('error', rej);
+    (document.getElementsByTagName('head')[0] || document.body || document.documentElement).appendChild(script);
+  });
+}
+
+/**
+ * Extracts values from the passed form and
+ * send them to a JSONP list-manage.
+ *
+ * @param {Event} event - Event to prevent the default behavior.
+ */
+function handleSubmit(e) {
+  e.preventDefault();
+  var loaderTemplate = $('svg.submit-loader');
+  var submitButton = $('.subscription__form__submit');
+
+  if (submitButton.hasClass('clicked')) {
+    return;
+  }
+
+  submitButton.addClass('clicked');
+  var startTimeout = 300,
+    loaderTimeout = 1500;
+  var totalLoaderTimeout = startTimeout + loaderTimeout;
+
+  setTimeout(function () {
+    submitButton.text('');
+    submitButton.append(loaderTemplate.clone());
+    submitButton.find('svg').removeClass('d-none');
+  }, startTimeout);
+
+  var mergeFields = getUriParams() || {};
+  var formValues = $('#subscribe').serializeArray();
+  var [email, listId, source] = formValues;
+  var searchParams = new URLSearchParams('');
+  searchParams.append('u', '74d01d7c38e6a422489d47c20');
+  searchParams.append('id', listId.value);
+  searchParams.append('EMAIL', email.value);
+  searchParams.append('SOURCE', source.value);
+  searchParams.append('USOURCE', mergeFields.utm_source || '');
+  searchParams.append('UMEDIUM', mergeFields.utm_medium || '');
+  searchParams.append('UCAMPAIGN', mergeFields.utm_campaign || '');
+  searchParams.append('c', '__jp');
+
+  jsonp(`https://x-team.us9.list-manage.com/subscribe/post-json?${searchParams.toString()}`)
+    .then(function (data) {;
+      if (data?.result === 'success') {
+        setTimeout(function () {
+          showButtonStatus(submitButton);
+          submitButton.find('.line3').addClass('d-none');
+        }, totalLoaderTimeout);
+      } else if (data?.result === 'error') {
+        setTimeout(function () {
+          showButtonStatus(submitButton);
+          submitButton.find('.line1').addClass('d-none');
+        }, totalLoaderTimeout);
+      }
+    })
+    .catch(function () {
+      setTimeout(function () {
+        showButtonStatus(submitButton);
+        submitButton.find('.line1').addClass('d-none');
+      }, totalLoaderTimeout);
+    });
+}
